@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { User, Player } from '../types';
-import { ItemStatus, PlayerRole } from '../types';
-import { PlusIcon, UploadIcon, DragHandleIcon, PlayerRoleIcon } from './icons';
+import { ItemStatus, PlayerRole, Role } from '../types';
+import { PlusIcon, UploadIcon, DragHandleIcon, PlayerRoleIcon, LinkIcon } from './icons';
 import { TEAM_LOGOS } from '../constants';
 
 interface AdminPanelProps {
@@ -12,11 +12,12 @@ interface AdminPanelProps {
   onSetAuctionOrder: (players: Player[]) => void;
 }
 
-type AdminTab = 'addPlayer' | 'addCredit' | 'importCsv' | 'order';
+type AdminTab = 'users' | 'order' | 'addPlayer' | 'addCredit' | 'importCsv';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ users, players, onAddPlayer, onAddCredit, onSetAuctionOrder }) => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('order');
-  
+  const [activeTab, setActiveTab] = useState<AdminTab>('users');
+  const [copiedUserId, setCopiedUserId] = useState<number | null>(null);
+
   // Add Player State
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerRole, setNewPlayerRole] = useState<PlayerRole>(PlayerRole.Attaccante);
@@ -42,6 +43,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ users, players, onAddPlayer, on
         setOrderedPlayers(pendingPlayers);
     }
   }, [activeTab, players]);
+
+  const handleCopyLink = (userId: number) => {
+    // Construct a clean base URL to avoid including existing query params
+    const baseUrl = `${window.location.origin}${window.location.pathname}`;
+    const url = new URL(baseUrl);
+    url.searchParams.set('userId', String(userId));
+
+    navigator.clipboard.writeText(url.href).then(() => {
+        setCopiedUserId(userId);
+        setTimeout(() => setCopiedUserId(null), 2000);
+    }, (err) => {
+        console.error('Could not copy link: ', err);
+    });
+  };
 
   const handleDragSort = () => {
     if (dragPlayer.current === null || dragOverPlayer.current === null) return;
@@ -158,11 +173,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ users, players, onAddPlayer, on
     <div className="bg-slate-800/50 border border-slate-700 rounded-lg shadow-lg p-6 sticky top-4">
       <h2 className="text-2xl font-bold text-white mb-4">Pannello Admin</h2>
       <div className="flex border-b border-slate-700 mb-6 text-sm sm:text-base overflow-x-auto">
+        <button onClick={() => setActiveTab('users')} className={`flex-shrink-0 px-3 py-2 font-semibold transition ${activeTab === 'users' ? 'text-red-500 border-b-2 border-red-500' : 'text-slate-400 hover:text-white'}`}>Gestione Utenti</button>
         <button onClick={() => setActiveTab('order')} className={`flex-shrink-0 px-3 py-2 font-semibold transition ${activeTab === 'order' ? 'text-red-500 border-b-2 border-red-500' : 'text-slate-400 hover:text-white'}`}>Ordine Asta</button>
         <button onClick={() => setActiveTab('addPlayer')} className={`flex-shrink-0 px-3 py-2 font-semibold transition ${activeTab === 'addPlayer' ? 'text-red-500 border-b-2 border-red-500' : 'text-slate-400 hover:text-white'}`}>Aggiungi Giocatore</button>
         <button onClick={() => setActiveTab('addCredit')} className={`flex-shrink-0 px-3 py-2 font-semibold transition ${activeTab === 'addCredit' ? 'text-red-500 border-b-2 border-red-500' : 'text-slate-400 hover:text-white'}`}>Aggiungi Crediti</button>
         <button onClick={() => setActiveTab('importCsv')} className={`flex-shrink-0 px-3 py-2 font-semibold transition ${activeTab === 'importCsv' ? 'text-red-500 border-b-2 border-red-500' : 'text-slate-400 hover:text-white'}`}>Importa CSV</button>
       </div>
+
+      {activeTab === 'users' && (
+         <div>
+            <h3 className="text-lg font-semibold text-white">Link di Accesso per gli Utenti</h3>
+            <p className="text-sm text-slate-400 mb-4">Copia e invia a ogni utente il proprio link personale per accedere all'asta.</p>
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                {users.filter(u => u.role === Role.User).map(user => (
+                    <div key={user.id} className="flex items-center justify-between bg-slate-700 p-3 rounded-lg">
+                        <span className="font-semibold text-white">{user.name}</span>
+                        <button 
+                            onClick={() => handleCopyLink(user.id)}
+                            className="flex items-center gap-2 text-sm bg-slate-600 hover:bg-slate-500 text-white font-semibold py-1 px-3 rounded-md transition"
+                        >
+                           <LinkIcon className="h-4 w-4" />
+                           {copiedUserId === user.id ? 'Copiato!' : 'Copia Link'}
+                        </button>
+                    </div>
+                ))}
+            </div>
+         </div>
+      )}
 
       {activeTab === 'order' && (
         <div className="space-y-4">
