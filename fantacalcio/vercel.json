@@ -1,7 +1,5 @@
 {
-  "build": {
-    "command": "echo 'Build step not required, serving static files.'"
-  },
+  "buildCommand": "true",
   "rewrites": [
     {
       "source": "/(.*)",
