@@ -1,12 +1,5 @@
 {
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
-}
-"build": {
+  "build": {
     "command": "echo 'Build step not required, serving static files.'"
   },
   "rewrites": [
