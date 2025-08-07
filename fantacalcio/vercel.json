@@ -1,9 +1,0 @@
-{
-  "buildCommand": "echo 'Build non necessario'",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
-}
