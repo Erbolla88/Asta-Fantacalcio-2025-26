@@ -1,5 +1,0 @@
-{
-  "name": "Piattaforma Asta Fantacalcio",
-  "description": "Un'applicazione per aste di fantacalcio in tempo reale. Gli utenti fanno offerte sui giocatori, l'amministratore gestisce la lista giocatori e i crediti, e ogni partecipante può visualizzare la propria rosa. Include l'importazione di giocatori tramite CSV e un conto alla rovescia dal vivo.",
-  "requestFramePermissions": []
-}
