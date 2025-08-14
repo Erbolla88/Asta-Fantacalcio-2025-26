@@ -17,6 +17,8 @@ interface AuctionState {
   guestSessionId: string | null; // Tracks a non-admin user session
   customLogos: Map<string, string>; // clubName (lowercase) -> logoDataUrl
   language: Language;
+  isTestMode: boolean;
+  winnerImageDataUrl: string | null;
   actions: {
     setLanguage: (language: Language) => void;
     login: (userId: string, isGuest: boolean) => void;
@@ -26,6 +28,7 @@ interface AuctionState {
     setCustomLogo: (clubName: string, logoDataUrl: string) => void;
     setTeamName: (userId: string, teamName: string) => void;
     setProfilePicture: (userId: string, dataUrl: string) => void;
+    setWinnerImageDataUrl: (dataUrl: string) => void;
     initializeAuction: (initialCredits: number) => void;
     startAuction: () => void;
     pauseAuction: () => void;
@@ -38,6 +41,8 @@ interface AuctionState {
     _nextPlayer: () => void;
     setUserReady: (userId: string) => void;
     resetAuction: () => void;
+    startTestAuction: () => void;
+    stopTestAuction: () => void;
   };
 }
 
@@ -94,6 +99,27 @@ const getInitialLanguage = (): Language => {
     }
 }
 
+const getInitialWinnerImage = (): string | null => {
+    try {
+        return localStorage.getItem('fantacalcio_winnerImage');
+    } catch (e) {
+        console.warn('Failed to access localStorage. Winner image will not persist.');
+        return null;
+    }
+};
+
+const getInitialCustomLogos = (): Map<string, string> => {
+    try {
+        const storedLogos = localStorage.getItem('fantacalcio_customLogos');
+        if (storedLogos) {
+            return new Map(JSON.parse(storedLogos));
+        }
+    } catch (e) {
+        console.warn('Failed to access or parse custom logos from localStorage.');
+    }
+    return new Map<string, string>();
+};
+
 const useAuctionStore = create<AuctionState>((set, get) => ({
   users: createInitialUserMap(),
   players: [],
@@ -106,8 +132,10 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
   lastWinner: null,
   loggedInUserId: getSessionState().loggedInUserId,
   guestSessionId: getSessionState().guestSessionId,
-  customLogos: new Map<string, string>(),
+  customLogos: getInitialCustomLogos(),
   language: getInitialLanguage(),
+  winnerImageDataUrl: getInitialWinnerImage(),
+  isTestMode: false,
   actions: {
     setLanguage: (language) => {
         try {
@@ -167,6 +195,11 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
     setCustomLogo: (clubName, logoDataUrl) => {
         const newCustomLogos = new Map(get().customLogos);
         newCustomLogos.set(clubName.toLowerCase(), logoDataUrl);
+        try {
+            localStorage.setItem('fantacalcio_customLogos', JSON.stringify(Array.from(newCustomLogos.entries())));
+        } catch (e) {
+            console.warn('Failed to save custom logos to localStorage');
+        }
         set({ customLogos: newCustomLogos });
     },
      setTeamName: (userId, teamName) => {
@@ -186,6 +219,14 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
             newUsers.set(userId, { ...user, profilePicture: dataUrl });
             set({ users: newUsers });
         }
+    },
+    setWinnerImageDataUrl: (dataUrl) => {
+        try {
+            localStorage.setItem('fantacalcio_winnerImage', dataUrl);
+        } catch (e) {
+            console.warn('Failed to save winner image to localStorage.');
+        }
+        set({ winnerImageDataUrl: dataUrl });
     },
     initializeAuction: (initialCredits) => {
         const oldUsers = get().users;
@@ -217,7 +258,7 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
         }
     },
     placeBid: (userId, amount) => {
-      const { status, players, auctionQueue, currentPlayerIndex, currentBid, users, actions } = get();
+      const { status, players, auctionQueue, currentPlayerIndex, currentBid, users, actions, isTestMode } = get();
       const currentUser = users.get(userId);
       const player = players[auctionQueue[currentPlayerIndex]];
 
@@ -233,7 +274,7 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
       if (currentUser.credits < amount) return false;
 
       set({ currentBid: { userId, amount } });
-      actions._startCountdown(5); // Reset countdown to 5 seconds
+      actions._startCountdown(isTestMode ? 2 : 5); // Reset countdown to 2s in test mode, 5s otherwise
       return true;
     },
     _tick: () => {
@@ -258,7 +299,7 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
       }
     },
     _sellPlayer: () => {
-        const { actions, currentBid, players, auctionQueue, currentPlayerIndex, users } = get();
+        const { actions, currentBid, players, auctionQueue, currentPlayerIndex, users, isTestMode } = get();
         actions._clearTimer();
 
         if (currentBid) {
@@ -282,12 +323,13 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
              set({ status: 'SOLD', lastWinner: null });
         }
         
+        const delay = isTestMode ? 2000 : 5000;
         setTimeout(() => {
             actions._nextPlayer();
-        }, 5000);
+        }, delay);
     },
     _nextPlayer: () => {
-      const { auctionQueue, currentPlayerIndex, actions } = get();
+      const { auctionQueue, currentPlayerIndex, actions, isTestMode } = get();
       const nextIndex = currentPlayerIndex + 1;
       if (nextIndex < auctionQueue.length) {
         set({
@@ -295,10 +337,10 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
           currentBid: null,
           status: 'BIDDING',
         });
-        actions._startCountdown(10);
+        actions._startCountdown(isTestMode ? 3 : 10);
       } else {
         actions._clearTimer();
-        set({ status: 'ENDED', currentPlayerIndex: -1 });
+        set({ status: 'ENDED', currentPlayerIndex: -1, isTestMode: false }); // End test mode on auction completion
       }
     },
     setUserReady: (userId) => {
@@ -316,7 +358,7 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
             sessionStorage.removeItem('fantacalcio_loggedInUserId');
             sessionStorage.removeItem('fantacalcio_guestSessionId');
         } catch (e) {
-             console.warn('Failed to access sessionStorage.');
+             console.warn('Failed to access storage.');
         }
         set({
             users: createInitialUserMap(),
@@ -330,8 +372,38 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
             lastWinner: null,
             loggedInUserId: null,
             guestSessionId: null,
-            customLogos: new Map<string, string>(),
+            isTestMode: false,
         });
+    },
+    startTestAuction: () => {
+        const { actions, users } = get();
+
+        // Perform a test-specific initialization
+        const newUsers = new Map(users);
+        newUsers.forEach((user, id) => {
+            newUsers.set(id, {
+                ...user,
+                credits: 500, // Fixed credits for test
+                squad: [],
+                isReady: true, // All users are ready
+            });
+        });
+
+        set({
+            users: newUsers,
+            isTestMode: true,
+            // Reset auction state for the test run
+            currentPlayerIndex: -1,
+            currentBid: null,
+            lastWinner: null,
+        });
+
+        // Directly start the auction process
+        actions._nextPlayer();
+    },
+    stopTestAuction: () => {
+        get().actions._clearTimer();
+        set({ isTestMode: false, status: 'PAUSED' });
     },
   },
 }));
