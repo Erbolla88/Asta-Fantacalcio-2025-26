@@ -22,7 +22,7 @@ interface AuctionState {
   winnerImageDataUrl: string | null;
   actions: {
     setLanguage: (language: Language) => void;
-    login: (userId: string, isGuest: boolean, userName?: string, status?: AuctionStatus, initialCredits?: number) => void;
+    login: (userId: string, isGuest: boolean, userName?: string) => void;
     logout: () => void;
     setPlayers: (players: Player[]) => void;
     addUser: (name: string) => void;
@@ -134,25 +134,25 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
         }
         set({ language });
     },
-    login: (userId, isGuest, userName, status, initialCredits) => {
-        const { users } = get();
-        let mutableUsers = new Map(users);
-        const userExisted = mutableUsers.has(userId);
+    login: (userId, isGuest, userName) => {
+        const { users, actions } = get();
+        const userExisted = users.has(userId);
+        let finalUsers = new Map(users);
 
         if (!userExisted && userName) {
             const newUser: User = {
                 id: userId,
                 name: userName,
-                credits: 500,
+                credits: 500, // This is a default; it will be overwritten by the synced state.
                 squad: [],
-                isReady: false,
+                isReady: false, // User must explicitly click "I'm ready"
                 teamName: `${userName}'s Team`,
                 profilePicture: undefined,
             };
-            mutableUsers.set(userId, newUser);
+            finalUsers.set(userId, newUser);
         }
         
-        if (!mutableUsers.has(userId)) return;
+        if (!finalUsers.has(userId)) return;
         
         try {
             sessionStorage.setItem('fantacalcio_loggedInUserId', userId);
@@ -160,29 +160,16 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
             else sessionStorage.removeItem('fantacalcio_guestSessionId');
         } catch (e) { console.warn('Failed to access sessionStorage.'); }
         
-        const stateUpdate: Partial<AuctionState> = {
+        set({
             loggedInUserId: userId,
             guestSessionId: isGuest ? userId : null,
-        };
-        
-        if (status === 'READY' && typeof initialCredits === 'number') {
-            const syncedUsers = new Map<string, User>();
-            mutableUsers.forEach((user, id) => {
-                syncedUsers.set(id, {
-                    ...user,
-                    credits: initialCredits,
-                    squad: [],
-                    isReady: id === 'admin' ? true : false,
-                });
-            });
-            stateUpdate.users = syncedUsers;
-            stateUpdate.status = 'READY';
-        } else if (!userExisted) {
-            stateUpdate.users = mutableUsers;
-        }
+            users: finalUsers,
+        });
 
-        set(stateUpdate);
-        if(!userExisted) get().actions._broadcastState();
+        // Announce presence if new
+        if(!userExisted) {
+          actions._broadcastState();
+        }
     },
     logout: () => {
         try {
@@ -453,10 +440,22 @@ const useAuctionStore = create<AuctionState>((set, get) => ({
         });
     },
     overwriteSharedState: (newState) => {
-        get().actions._clearTimer();
+        const { actions, users: localUsers } = get();
+        actions._clearTimer();
+        
+        // Intelligently merge user lists. The new state is the authority, but we add
+        // any users from our local state that are missing from the new state.
+        // This prevents a newly joining user from being erased by the first sync event.
+        const mergedUsers = new Map(newState.users);
+        localUsers.forEach((user, id) => {
+            if (!mergedUsers.has(id)) {
+                mergedUsers.set(id, user);
+            }
+        });
+
         set({
             status: newState.status,
-            users: newState.users,
+            users: mergedUsers,
             currentPlayerIndex: newState.currentPlayerIndex,
             currentBid: newState.currentBid,
             lastWinner: newState.lastWinner,
