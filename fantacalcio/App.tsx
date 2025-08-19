@@ -119,13 +119,12 @@ function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const userIdToLogin = urlParams.get('loginAs');
     const userName = urlParams.get('name');
-    const status = urlParams.get('status');
-    const credits = urlParams.get('credits');
-
+    
     if (userIdToLogin) {
-      const initialCredits = credits ? parseInt(credits, 10) : undefined;
-      actions.login(userIdToLogin, true, userName || undefined, (status as any) || undefined, initialCredits);
+      // The login action now only needs identity. The state will arrive via the sync hook.
+      actions.login(userIdToLogin, true, userName || undefined);
       
+      // Clean the URL to prevent re-login on refresh
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [actions]);
